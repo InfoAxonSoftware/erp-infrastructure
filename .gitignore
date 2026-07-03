@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Logs
+logs/
+*.log
+
+# Backups
+backups/
+
+# PostgreSQL Data
+postgres-data/
+
+# Odoo Filestore
+odoo-data/
+
+# SSL
+ssl/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

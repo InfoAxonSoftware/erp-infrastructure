@@ -1,0 +1,13 @@
+name: erp-platform
+
+networks:
+  frontend:
+    driver: bridge
+
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  odoo_data:
+  odoo_filestore:

@@ -1,26 +1,37 @@
-# Environment
+# ── Secrets ───────────────────────────────────────────────────────────────────
 .env
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
 *.log
 
-# Backups
+# ── Backups ───────────────────────────────────────────────────────────────────
 backups/
 
-# PostgreSQL Data
+# ── Docker volume data (created at runtime) ───────────────────────────────────
 postgres-data/
-
-# Odoo Filestore
 odoo-data/
 
-# SSL
+# ── SSL certificates ──────────────────────────────────────────────────────────
 ssl/
 
-# IDE
+# ── React external repo (cloned by deploy.sh into docker/react/app/) ─────────
+docker/react/app/
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+docker/react/node_modules/
+docker/react/dist/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Temporary files ───────────────────────────────────────────────────────────
+*.tmp
+*.bak

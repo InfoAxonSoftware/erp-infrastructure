@@ -1,0 +1,63 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# React Marketing Website  →  ${DOMAIN}  (yourerp.com)
+# ──────────────────────────────────────────────────────────────────────────────
+
+server {
+    listen       80;
+    server_name  ${DOMAIN} www.${DOMAIN};
+
+    # ── Security headers ──────────────────────────────────────────────────────
+    add_header  X-Frame-Options           "SAMEORIGIN"                    always;
+    add_header  X-Content-Type-Options    "nosniff"                       always;
+    add_header  X-XSS-Protection          "1; mode=block"                 always;
+    add_header  Referrer-Policy           "strict-origin-when-cross-origin" always;
+    add_header  Permissions-Policy        "camera=(), microphone=(), geolocation=()" always;
+
+    # ── Internal health check (used by Docker) ────────────────────────────────
+    location = /health {
+        access_log  off;
+        return 200 "healthy\n";
+        add_header  Content-Type  text/plain;
+    }
+
+    # ── Proxy to React container ──────────────────────────────────────────────
+    location / {
+        limit_req   zone=general  burst=30  nodelay;
+        limit_conn  addr          30;
+        proxy_pass  http://react:80;
+    }
+}
+
+# ── HTTP → HTTPS redirect (uncomment after SSL is configured) ─────────────────
+# server {
+#     listen       80;
+#     server_name  ${DOMAIN} www.${DOMAIN};
+#     return 301   https://$host$request_uri;
+# }
+#
+# server {
+#     listen       443 ssl;
+#     http2        on;
+#     server_name  ${DOMAIN} www.${DOMAIN};
+#
+#     ssl_certificate     /etc/nginx/ssl/live/${DOMAIN}/fullchain.pem;
+#     ssl_certificate_key /etc/nginx/ssl/live/${DOMAIN}/privkey.pem;
+#
+#     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+#     add_header X-Frame-Options           "SAMEORIGIN"                    always;
+#     add_header X-Content-Type-Options    "nosniff"                       always;
+#     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+#     add_header Permissions-Policy        "camera=(), microphone=(), geolocation=()" always;
+#
+#     location = /health {
+#         access_log off;
+#         return 200 "healthy\n";
+#         add_header Content-Type text/plain;
+#     }
+#
+#     location / {
+#         limit_req   zone=general burst=30 nodelay;
+#         limit_conn  addr 30;
+#         proxy_pass  http://react:80;
+#     }
+# }

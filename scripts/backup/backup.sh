@@ -62,7 +62,7 @@ if [[ "${FILESTORE_ONLY}" != "true" ]]; then
     # Get all Odoo/user databases. The maintenance postgres database is handled
     # separately for the optional registry dump below.
     DATABASES=$(docker exec erp-postgres \
-        psql -U "${POSTGRES_USER}" -t -A \
+        psql -U "${POSTGRES_USER}" -d postgres -t -A \
         -c "SELECT datname FROM pg_database WHERE datistemplate=false AND datname NOT IN ('postgres','template0','template1');")
 
     if [[ -z "${DATABASES}" ]]; then

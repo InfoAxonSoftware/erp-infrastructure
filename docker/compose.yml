@@ -31,10 +31,10 @@ services:
       - backend
     command: >
       postgres
-      -c max_connections=50
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=64MB
+      -c max_connections=40
+      -c shared_buffers=128MB
+      -c effective_cache_size=768MB
+      -c maintenance_work_mem=32MB
       -c checkpoint_completion_target=0.9
       -c wal_buffers=8MB
       -c random_page_cost=1.1

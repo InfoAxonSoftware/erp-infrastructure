@@ -71,8 +71,6 @@ services:
       - ../logs/odoo:/var/log/odoo
     ports:
       - "8069:8069"
-    expose:
-      - "8072"
     networks:
       - backend
       - frontend

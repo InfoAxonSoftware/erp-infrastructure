@@ -21,7 +21,7 @@ The installer configures Docker, a deploy user, SSH key authentication, Fail2Ban
 Firewall policy:
 
 - Open: SSH, `80`, `443`, temporary Odoo demo port `8069`
-- Blocked: PostgreSQL `5432`, Odoo gevent `8072`
+- Blocked: PostgreSQL `5432`
 
 ## 2. Clone and Configure
 
@@ -70,6 +70,23 @@ After deployment:
 - Odoo demo: `http://SERVER_IP:8069`
 
 Odoo is intentionally not configured with a domain or SSL yet.
+
+This small direct-IP demo VPS intentionally uses `workers = 0`. In this mode Odoo handles websocket traffic through the normal HTTP server on `8069`, which avoids a separate gevent/websocket reverse-proxy requirement. Module installation can still take several minutes on 1 vCPU.
+
+If a browser-based module installation times out, recover from the CLI:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker/compose.yml \
+  -f docker/compose.prod.yml \
+  run --rm odoo \
+  odoo -d DATABASE_NAME -i MODULE_NAME \
+  --stop-after-init \
+  --no-http \
+  --limit-time-real=1200 \
+  --limit-time-cpu=600
+```
 
 ## 5. Configure Website SSL
 

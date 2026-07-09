@@ -47,6 +47,25 @@ The Odoo master password is the `ODOO_ADMIN_PASSWORD` value from `.env`.
 
 Warning: port `8069` and the Odoo database manager are publicly reachable in this demo configuration. Keep `ODOO_ADMIN_PASSWORD` strong, share access carefully, and do not use this exposure pattern for production.
 
+## Odoo Module Recovery
+
+This small direct-IP demo VPS intentionally uses `workers = 0`. Odoo handles websocket traffic through the normal HTTP server on `8069`, avoiding the separate gevent/websocket reverse-proxy requirement.
+
+Module installation can still take several minutes on 1 vCPU. If a browser installation times out, recover from the CLI:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker/compose.yml \
+  -f docker/compose.prod.yml \
+  run --rm odoo \
+  odoo -d DATABASE_NAME -i MODULE_NAME \
+  --stop-after-init \
+  --no-http \
+  --limit-time-real=1200 \
+  --limit-time-cpu=600
+```
+
 ## Verification Commands
 
 ```bash

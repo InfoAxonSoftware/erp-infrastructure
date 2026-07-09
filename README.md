@@ -20,10 +20,10 @@ Internet
   -> Odoo :8069     -> temporary direct demo access
 
 Odoo -> PostgreSQL :5432 over the private Docker backend network
-Odoo gevent :8072 stays private on the Docker network
+Odoo workers=0 handles websocket traffic through :8069
 ```
 
-PostgreSQL is never published publicly. Port `8072` is never published publicly.
+PostgreSQL is never published publicly. Port `8072` is not published or required for this direct-IP demo mode.
 
 ## Official Deployment Command
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository now targets the real small VPS deployment: the InfoAxon React company website plus one Odoo 18 Community demo database.
+This repository now targets the real small VPS development/demo deployment: the InfoAxon React company website plus Odoo 18 Community with multiple demo databases.
 
 ```text
                          Internet
@@ -37,19 +37,21 @@ This repository now targets the real small VPS deployment: the InfoAxon React co
 
 PostgreSQL has no published host port. Odoo port `8072` is exposed only to the Docker network for gevent/longpolling.
 
-## Odoo Demo Database
+## Odoo Demo Databases
 
-`config/odoo/odoo.conf` is pinned to:
+`config/odoo/odoo.conf` is intentionally configured for development and client demonstrations:
 
 ```ini
-dbfilter = ^infoaxon_erp$
-list_db = False
+dbfilter = .*
+list_db = True
 workers = 1
 max_cron_threads = 1
 db_maxconn = 16
 ```
 
-This keeps direct IP access working for the current demo database while avoiding public database listing screens.
+Multiple demo databases are allowed, and the Odoo database listing and database manager are enabled intentionally so administrators can create and switch databases during demos. This is not suitable for production without additional access controls.
+
+PostgreSQL remains private on the Docker `backend` network, and Odoo gevent port `8072` remains private on the Docker network. Odoo port `8069` is temporarily public for direct demo access, including `/web/database/manager`.
 
 ## React External Repository
 

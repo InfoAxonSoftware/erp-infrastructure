@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document covers the security measures implemented in the ERP infrastructure and the steps required to maintain a hardened production environment.
+This document covers the security measures implemented in the ERP infrastructure and the steps required to maintain the current development/demo environment. The current Odoo database-manager configuration is not suitable for production.
 
 ---
 
@@ -157,13 +157,17 @@ Let's Encrypt uses HTTP-01 certificates only for `infoaxon.lk` and `www.infoaxon
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| `list_db = False` | Disabled | Prevents public database listing |
-| `dbfilter = ^infoaxon_erp$` | Fixed demo DB | Keeps direct IP access focused on the demo database |
+| `list_db = True` | Enabled intentionally | Allows administrators to list and switch demo databases |
+| `dbfilter = .*` | Multiple demo DBs | Allows administrators to create and use multiple demo databases |
 | `proxy_mode = True` | Enabled | Trusts X-Forwarded-For from Nginx |
 | `admin_passwd` | Random 32+ chars | Protects database manager |
 | `/web/database/manager` | Not protected by Nginx for direct `8069` access | Temporary risk accepted for demos |
 
-The Odoo database listing is disabled in Odoo itself. Because Odoo is temporarily reachable on `8069`, requests do not pass through the website Nginx server. That means Nginx rate limits and Nginx database-manager blocks do not protect direct Odoo traffic. Keep the master password strong, avoid sharing the demo URL broadly, monitor logs, and remove direct access when the demo requirement ends.
+Multiple demo databases are allowed. Odoo database listing and the database manager are enabled intentionally for development and client demonstrations. This configuration is not suitable for production.
+
+Because Odoo is temporarily reachable on public port `8069`, requests do not pass through the website Nginx server. That means Nginx rate limits and Nginx database-manager blocks do not protect direct Odoo traffic. Keep the master password strong, avoid sharing the demo URL broadly, monitor logs, and remove direct access when the demo requirement ends.
+
+PostgreSQL remains private on the Docker `backend` network. Odoo gevent port `8072` remains private on the Docker network.
 
 ---
 
@@ -214,7 +218,7 @@ Before going to production, verify:
 - [ ] Fail2Ban is running
 - [ ] SSL certificates are valid (`curl -I https://infoaxon.lk`)
 - [ ] HSTS header is present
-- [ ] Odoo database listing is disabled
+- [ ] Odoo database listing and manager are intentionally enabled only for development/demo use
 - [ ] Temporary public Odoo port 8069 is still required and understood
 - [ ] PostgreSQL port 5432 is not reachable from outside
 - [ ] Odoo gevent port 8072 is not reachable from outside

@@ -8,7 +8,7 @@ Docker Compose infrastructure for the InfoAxon company website and a small Odoo 
 |------|--------------------|
 | VPS | 1 vCPU, 2 GB RAM, 2 GB swap recommended |
 | Website | React app cloned from `REACT_REPO_URL` into `docker/react/app` during deploy |
-| ERP demo | Odoo 18 Community, database `infoaxon_erp` |
+| ERP demo | Odoo 18 Community, multiple demo databases allowed |
 | Database | PostgreSQL 16, Docker-network only |
 | Reverse proxy | Nginx for `infoaxon.lk` and `www.infoaxon.lk` |
 
@@ -77,6 +77,7 @@ Local backups under `backups/` are not disaster recovery. Copy them off the VPS.
 ## Documentation
 
 - [Architecture](docs/Architecture.md)
+- [Quick Deploy](docs/QuickDeploy.md)
 - [Deployment](docs/Deployment.md)
 - [Backup and Restore](docs/Backup.md)
 - [Customer Provisioning](docs/Customers.md)

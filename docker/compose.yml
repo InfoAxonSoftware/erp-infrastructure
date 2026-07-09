@@ -31,17 +31,17 @@ services:
       - backend
     command: >
       postgres
-      -c max_connections=200
+      -c max_connections=50
       -c shared_buffers=256MB
       -c effective_cache_size=1GB
       -c maintenance_work_mem=64MB
       -c checkpoint_completion_target=0.9
-      -c wal_buffers=16MB
+      -c wal_buffers=8MB
       -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c work_mem=4MB
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
+      -c effective_io_concurrency=100
+      -c work_mem=2MB
+      -c min_wal_size=80MB
+      -c max_wal_size=1GB
       -c log_min_duration_statement=1000
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-odoo}"]
@@ -69,6 +69,10 @@ services:
       - odoo_filestore:/var/lib/odoo/filestore
       - ../config/odoo/odoo.conf:/etc/odoo/odoo.conf:ro
       - ../logs/odoo:/var/log/odoo
+    ports:
+      - "8069:8069"
+    expose:
+      - "8072"
     networks:
       - backend
       - frontend
@@ -93,20 +97,20 @@ services:
       dockerfile: Dockerfile
     container_name: erp-nginx
     depends_on:
-      odoo:
-        condition: service_healthy
       react:
         condition: service_started
     ports:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN:-yourerp.com}
+      DOMAIN: ${DOMAIN:-infoaxon.lk}
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates/${NGINX_TEMPLATE_PROFILE:-http}
     volumes:
       - ../config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../config/nginx/templates:/etc/nginx/templates:ro
       - ../logs/nginx:/var/log/nginx
       - ../ssl:/etc/nginx/ssl:ro
+      - ../ssl/certbot/www:/var/www/certbot:ro
     networks:
       - frontend
     healthcheck:

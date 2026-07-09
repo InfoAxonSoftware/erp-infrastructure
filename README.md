@@ -1,144 +1,84 @@
 # ERP Infrastructure
 
-Production-ready, multi-tenant SaaS ERP platform built on **Odoo 17 Community**, **PostgreSQL 16**, **React**, and **Nginx** — fully containerized with Docker Compose and deployable on any Ubuntu 24.04 VPS.
+Docker Compose infrastructure for the InfoAxon company website and a small Odoo 18 Community demo instance on an Ubuntu 24.04 VPS.
 
----
+## Current Target
 
-## Stack
+| Item | Current deployment |
+|------|--------------------|
+| VPS | 1 vCPU, 2 GB RAM, 2 GB swap recommended |
+| Website | React app cloned from `REACT_REPO_URL` into `docker/react/app` during deploy |
+| ERP demo | Odoo 18 Community, database `infoaxon_erp` |
+| Database | PostgreSQL 16, Docker-network only |
+| Reverse proxy | Nginx for `infoaxon.lk` and `www.infoaxon.lk` |
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| ERP Backend | Odoo Community | 17.0 |
-| Database | PostgreSQL | 16 |
-| Frontend Website | React + Vite | 18 / 5 |
-| Reverse Proxy | Nginx | 1.25 |
-| Container Runtime | Docker + Compose | Latest |
-| OS Target | Ubuntu | 24.04 LTS |
+## Network Shape
 
----
+```text
+Internet
+  -> Nginx :80/:443 -> React website
+  -> Odoo :8069     -> temporary direct demo access
 
-## Architecture
-
-```
-Internet → Nginx (80/443) → React (yourerp.com)
-                         → Odoo  (erp.yourerp.com, *.yourerp.com)
-                              └── PostgreSQL (internal only)
+Odoo -> PostgreSQL :5432 over the private Docker backend network
+Odoo gevent :8072 stays private on the Docker network
 ```
 
-Multi-tenant: each customer = isolated PostgreSQL database + subdomain.
-`company1.yourerp.com` → database `company1` (via `dbfilter = ^%d$`).
+PostgreSQL is never published publicly. Port `8072` is never published publicly.
 
----
+## Official Deployment Command
 
-## Quick Start (Production)
+On a prepared server, use:
 
 ```bash
-# 1. Set up a fresh Ubuntu 24.04 VPS
-curl -fsSL https://raw.githubusercontent.com/yourorg/erp-infrastructure/main/scripts/install/install.sh \
-  | sudo bash
+bash scripts/install/deploy.sh
+```
 
-# 2. Clone and configure
-git clone https://github.com/yourorg/erp-infrastructure.git /opt/erp/repo
+For website SSL after DNS for `infoaxon.lk` and `www.infoaxon.lk` points at the server:
+
+```bash
+bash scripts/install/deploy.sh --ssl
+```
+
+The deploy script always uses:
+
+```bash
+docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml
+```
+
+## Fresh Server Flow
+
+```bash
+sudo bash scripts/install/install.sh
+git clone https://github.com/InfoAxonSoftware/erp-infrastructure.git /opt/erp/repo
 cd /opt/erp/repo
 cp .env.example .env
-nano .env   # Set DOMAIN, POSTGRES_PASSWORD, ODOO_ADMIN_PASSWORD
-
-# 3. Deploy
+nano .env
 bash scripts/install/deploy.sh
-
-# 4. Add a customer tenant
-bash scripts/customer/create-customer.sh acmecorp "Acme Corporation" admin@acmecorp.com
 ```
 
----
+Set strong values for `POSTGRES_PASSWORD`, `ODOO_ADMIN_PASSWORD`, and the real `REACT_REPO_URL`.
 
-## Repository Structure
+## Access
 
-```
-erp-infrastructure/
-├── docker/
-│   ├── compose.yml           # Base service definitions
-│   ├── compose.prod.yml      # Production overrides (restart, resource limits)
-│   ├── nginx/Dockerfile
-│   ├── odoo/
-│   │   ├── Dockerfile
-│   │   └── entrypoint.sh     # Runtime secret injection
-│   ├── postgres/
-│   │   └── init/01-init.sql  # DB init + tenant registry table
-│   └── react/                # Full Vite+React landing page + Dockerfile
-├── config/
-│   ├── nginx/
-│   │   ├── nginx.conf        # Global nginx settings
-│   │   └── templates/        # envsubst templates (DOMAIN substituted at start)
-│   └── odoo/odoo.conf        # Multi-tenant Odoo config
-├── scripts/
-│   ├── install/
-│   │   ├── install.sh        # Fresh VPS setup (Docker, UFW, Fail2Ban, SSH)
-│   │   ├── deploy.sh         # Build images + start stack + health checks
-│   │   └── setup-ssl.sh      # Let's Encrypt certificate setup
-│   ├── backup/backup.sh      # DB + filestore backup with S3 support
-│   ├── restore/restore.sh    # Selective restore (per-DB or full)
-│   └── customer/
-│       └── create-customer.sh # Provision a new tenant in ~30 seconds
-├── docs/
-│   ├── Architecture.md
-│   ├── Deployment.md         # Step-by-step VPS deployment guide
-│   ├── Security.md           # Firewall, SSL, SSH, Docker hardening
-│   ├── Backup.md             # Backup/restore procedures
-│   ├── Scaling.md            # Single VPS → multi-server growth path
-│   └── Customers.md          # Tenant lifecycle management
-├── backups/                  # Local backup storage (gitignored)
-├── logs/                     # Runtime logs (gitignored)
-├── ssl/                      # TLS certificates (gitignored)
-└── .env.example              # Environment variable template
+- Website: `http://infoaxon.lk` or `https://infoaxon.lk` after SSL setup.
+- Odoo demo: `http://SERVER_IP:8069`.
+
+Odoo does not currently have a public domain or SSL certificate in this deployment.
+
+## Backups
+
+```bash
+bash scripts/backup/backup.sh
+bash scripts/restore/restore.sh <timestamp> --all-dbs --filestore
 ```
 
----
-
-## Key Features
-
-- **Multi-tenant SaaS** — subdomain-based database routing with Odoo `dbfilter`
-- **Zero-touch SSL** — Let's Encrypt wildcard certificates via `setup-ssl.sh`
-- **Automated backups** — per-database pg_dump + filestore tar with S3 upload
-- **One-command tenant provisioning** — `create-customer.sh` handles DB creation + Odoo init
-- **Production hardened** — UFW, Fail2Ban, SSH key-only, nginx rate limiting, security headers
-- **Scalable** — designed to grow from 1 to 100+ tenants; scaling guide included
-
----
-
-## Scripts Reference
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/install/install.sh` | Prepare a fresh Ubuntu 24.04 server |
-| `scripts/install/deploy.sh` | Build + launch the full stack |
-| `scripts/install/setup-ssl.sh` | Obtain and configure Let's Encrypt SSL |
-| `scripts/backup/backup.sh` | Back up all databases and filestore |
-| `scripts/restore/restore.sh` | Restore from a backup |
-| `scripts/customer/create-customer.sh` | Provision a new tenant |
-
----
+Local backups under `backups/` are not disaster recovery. Copy them off the VPS.
 
 ## Documentation
 
 - [Architecture](docs/Architecture.md)
-- [Deployment Guide](docs/Deployment.md)
-- [Security](docs/Security.md)
-- [Backup & Restore](docs/Backup.md)
+- [Deployment](docs/Deployment.md)
+- [Backup and Restore](docs/Backup.md)
+- [Customer Provisioning](docs/Customers.md)
 - [Scaling](docs/Scaling.md)
-- [Customer Onboarding](docs/Customers.md)
-
----
-
-## Requirements
-
-- Docker Engine 24+
-- Docker Compose v2
-- Ubuntu 24.04 VPS (min 4 GB RAM / 2 vCPU)
-- A domain with wildcard DNS support
-
----
-
-## License
-
-See [LICENSE](LICENSE).
+- [Security](docs/Security.md)

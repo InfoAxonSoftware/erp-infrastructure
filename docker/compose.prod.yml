@@ -2,46 +2,31 @@ services:
 
   postgres:
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+    cpus: '0.30'
+    mem_limit: 384m
+    mem_reservation: 256m
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
-        max-file: "5"
+        max-file: "3"
 
   odoo:
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 1G
+    cpus: '0.80'
+    mem_limit: 1100m
+    mem_reservation: 768m
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
-        max-file: "5"
+        max-file: "3"
 
   react:
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
+    cpus: '0.15'
+    mem_limit: 160m
+    mem_reservation: 64m
     logging:
       driver: "json-file"
       options:
@@ -50,16 +35,11 @@ services:
 
   nginx:
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
+    cpus: '0.20'
+    mem_limit: 160m
+    mem_reservation: 64m
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
-        max-file: "5"
+        max-file: "3"

@@ -1,0 +1,47 @@
+# React company website over HTTPS.
+
+server {
+    listen       80;
+    server_name  ${DOMAIN} www.${DOMAIN};
+
+    location = /health {
+        access_log  off;
+        return 200 "healthy\n";
+        add_header  Content-Type  text/plain;
+    }
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen       443 ssl;
+    http2        on;
+    server_name  ${DOMAIN} www.${DOMAIN};
+
+    ssl_certificate     /etc/nginx/ssl/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/${DOMAIN}/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Frame-Options           "SAMEORIGIN" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy        "camera=(), microphone=(), geolocation=()" always;
+
+    location = /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    location / {
+        limit_req   zone=general burst=30 nodelay;
+        limit_conn  addr 30;
+        proxy_pass  http://react:80;
+    }
+}

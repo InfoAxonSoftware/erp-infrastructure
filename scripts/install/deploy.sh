@@ -64,7 +64,26 @@ mkdir -p \
 info "Cloning or updating React frontend from: ${REACT_REPO_URL}"
 REACT_APP_DIR="${REPO_ROOT}/docker/react/app"
 
+ensure_react_app_git_access() {
+    local deploy_uid_gid
+    deploy_uid_gid="$(id -u):$(id -g)"
+
+    git config --global --get-all safe.directory | grep -Fxq "${REACT_APP_DIR}" || \
+        git config --global --add safe.directory "${REACT_APP_DIR}"
+
+    if [[ -d "${REACT_APP_DIR}" ]]; then
+        if [[ "${EUID}" -eq 0 ]]; then
+            chown -R "${deploy_uid_gid}" "${REACT_APP_DIR}"
+        elif command -v sudo &>/dev/null; then
+            sudo chown -R "${deploy_uid_gid}" "${REACT_APP_DIR}"
+        else
+            chown -R "${deploy_uid_gid}" "${REACT_APP_DIR}"
+        fi
+    fi
+}
+
 if [[ -d "${REACT_APP_DIR}/.git" ]]; then
+    ensure_react_app_git_access
     info "React repo already cloned; fetching latest refs..."
     git -C "${REACT_APP_DIR}" fetch --all --prune
     if [[ -n "${REACT_BRANCH:-}" ]]; then

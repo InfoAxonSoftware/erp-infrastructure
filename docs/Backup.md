@@ -1,159 +1,91 @@
-# Backup & Restore Guide
+# Backup and Restore
 
-## Backup Strategy
+## Important Warning
 
-| Component | What is backed up | Format | Frequency (recommended) |
-|-----------|-------------------|--------|--------------------------|
-| PostgreSQL | All tenant databases | Custom pg_dump | Daily |
-| Odoo filestore | Attachments, documents, images | tar.gz | Daily |
-| Configuration | `.env`, nginx templates, odoo.conf | Git (versioned) | On change |
+Backups stored only under this server's local `backups/` directory are not disaster recovery. They help with quick rollback, but a lost VPS means lost local backups. Copy backup folders to off-server storage such as S3, another VPS, or a secured archive.
 
-**Retention:** 14 days of local backups by default (configurable via `BACKUP_RETENTION_DAYS` in `.env`).
+Do not commit backups, `.env`, passwords, or certificates to Git.
 
----
+## What Is Backed Up
 
-## Running a Backup
+| Component | Method |
+|-----------|--------|
+| Odoo databases | One custom-format `pg_dump` per non-template PostgreSQL database except maintenance `postgres` |
+| Registry table | `_registry.dump` if `public.tenant_registry` exists in `postgres` |
+| Odoo filestore | `filestore.tar.gz` from the `erp-platform_odoo_filestore` volume |
+| Manifest | `manifest.txt` with timestamp, host, and backup contents |
 
-### Manual backup
+## Run a Backup
 
 ```bash
-# Full backup (databases + filestore)
 bash scripts/backup/backup.sh
+```
 
-# Databases only
+Optional modes:
+
+```bash
 bash scripts/backup/backup.sh --db-only
-
-# Filestore only
 bash scripts/backup/backup.sh --filestore-only
 ```
 
-Backup output location:
-```
+Backup layout:
+
+```text
 backups/
-└── 2025-01-15_02-00-00/
-    ├── manifest.txt
-    ├── postgres/
-    │   ├── company1.dump
-    │   ├── company2.dump
-    │   └── _registry.dump
-    └── filestore/
-        └── filestore.tar.gz
+  2026-07-09_02-00-00/
+    manifest.txt
+    postgres/
+      infoaxon_erp.dump
+      _registry.dump
+    filestore/
+      filestore.tar.gz
 ```
 
-### Automated daily backup (cron)
-
-Add to the `erp` user crontab (`crontab -e`):
+## Recommended Cron
 
 ```cron
-# Daily backup at 2:00 AM
 0 2 * * * cd /opt/erp/repo && bash scripts/backup/backup.sh >> logs/backup.log 2>&1
-
-# Weekly full backup with log rotation
-0 3 * * 0 cd /opt/erp/repo && bash scripts/backup/backup.sh 2>&1 | logger -t erp-backup
 ```
 
----
+Also configure off-server copy. If `S3_BUCKET` is set and the AWS CLI is installed/configured, the script uploads the backup folder.
 
-## Off-Site Backup (S3)
+## Emergency Restore
 
-Add to `.env`:
-```dotenv
-S3_BUCKET=my-erp-backups
-BACKUP_RETENTION_DAYS=14
-```
+For a full server recovery:
 
-The backup script automatically uploads to `s3://my-erp-backups/erp-backups/<timestamp>/` if `aws` CLI is installed and `S3_BUCKET` is set.
-
-**Install AWS CLI:**
-```bash
-sudo snap install aws-cli --classic
-aws configure  # Enter access key, secret, region
-```
-
-**Required IAM permissions:**
-```json
-{
-  "Effect": "Allow",
-  "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
-  "Resource": ["arn:aws:s3:::my-erp-backups/*"]
-}
-```
-
----
-
-## Restore Procedure
-
-### List available backups
-```bash
-ls -la backups/
-```
-
-### Restore a single tenant database
+1. Provision a new Ubuntu 24.04 VPS.
+2. Run `scripts/install/install.sh`.
+3. Clone this repository into `/opt/erp/repo`.
+4. Restore `.env` from a secure password manager or vault.
+5. Copy the required backup folder into `backups/`.
+6. Run `bash scripts/install/deploy.sh`.
+7. Restore data:
 
 ```bash
-bash scripts/restore/restore.sh 2025-01-15_02-00-00 --db company1
+bash scripts/restore/restore.sh <timestamp> --all-dbs --filestore
 ```
 
-### Restore all databases
+8. Point DNS to the new server.
+9. Run `bash scripts/install/deploy.sh --ssl`.
+
+## Restore Options
+
+Restore everything:
 
 ```bash
-bash scripts/restore/restore.sh 2025-01-15_02-00-00 --all-dbs
+bash scripts/restore/restore.sh <timestamp> --all-dbs --filestore
 ```
 
-### Restore filestore
+Restore one database:
 
 ```bash
-bash scripts/restore/restore.sh 2025-01-15_02-00-00 --filestore
+bash scripts/restore/restore.sh <timestamp> --db infoaxon_erp
 ```
 
-### Full restore (databases + filestore)
+Restore filestore only:
 
 ```bash
-bash scripts/restore/restore.sh 2025-01-15_02-00-00 --all-dbs --filestore
+bash scripts/restore/restore.sh <timestamp> --filestore
 ```
 
-> **Warning:** The restore script will STOP Odoo, DROP and recreate databases, and overwrite the filestore volume. It prompts for confirmation before each destructive action.
-
----
-
-## Testing Backups
-
-Test your backups monthly to ensure they are valid:
-
-```bash
-# Verify a database dump can be read
-docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
-  pg_restore --list backups/2025-01-15_02-00-00/postgres/company1.dump | head -20
-
-# Verify filestore archive integrity
-tar -tzf backups/2025-01-15_02-00-00/filestore/filestore.tar.gz | head -20
-
-# Test restore to a temporary database
-docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
-  psql -U odoo -d postgres -c "CREATE DATABASE company1_test;"
-
-docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
-  pg_restore -U odoo -d company1_test --no-owner \
-  < backups/2025-01-15_02-00-00/postgres/company1.dump
-
-docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
-  psql -U odoo -d postgres -c "DROP DATABASE company1_test;"
-```
-
----
-
-## Disaster Recovery
-
-### Scenario: Complete server loss
-
-1. Provision a new VPS
-2. Run `install.sh` on the new server
-3. Clone the repository
-4. Copy `.env` from a secure location (password manager / vault)
-5. Copy backups from S3 (or your remote storage) to `backups/`
-6. Deploy the stack: `bash scripts/install/deploy.sh`
-7. Restore all data: `bash scripts/restore/restore.sh <latest-timestamp> --all-dbs --filestore`
-8. Update DNS to point to the new server IP
-9. Re-request SSL certificates: `bash scripts/install/deploy.sh --ssl`
-
-**Estimated RTO (Recovery Time Objective):** 30–60 minutes with good documentation and off-site backups.
+When `--all-dbs` is used, `_registry.dump` is restored automatically if it exists.

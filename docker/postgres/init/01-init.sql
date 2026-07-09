@@ -1,5 +1,5 @@
 -- =============================================================================
--- PostgreSQL Initialization — Odoo Multi-Tenant SaaS
+-- PostgreSQL Initialization - Odoo demo support
 -- Runs once on first container start as the postgres superuser.
 -- =============================================================================
 
@@ -9,7 +9,7 @@
 
 DO $$
 BEGIN
-    -- Ensure the Odoo user can create databases (needed per-tenant provisioning)
+    -- Ensure the Odoo user can create databases for Odoo database operations.
     IF NOT (SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user) THEN
         EXECUTE 'ALTER USER ' || current_user || ' CREATEDB';
     END IF;
@@ -17,8 +17,8 @@ END;
 $$;
 
 -- =============================================================================
--- Tenant registry
--- Tracks every tenant database provisioned via create-customer.sh.
+-- Legacy tenant registry
+-- Kept so older backups with _registry.dump can still be restored cleanly.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS public.tenant_registry (
     id              SERIAL          PRIMARY KEY,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.tenant_registry (
 CREATE INDEX IF NOT EXISTS idx_tenant_subdomain  ON public.tenant_registry (subdomain);
 CREATE INDEX IF NOT EXISTS idx_tenant_is_active  ON public.tenant_registry (is_active);
 
-COMMENT ON TABLE  public.tenant_registry               IS 'Master registry of all SaaS tenant databases.';
+COMMENT ON TABLE  public.tenant_registry               IS 'Legacy registry for previously provisioned tenant databases.';
 COMMENT ON COLUMN public.tenant_registry.tenant_name   IS 'Human-readable company name.';
 COMMENT ON COLUMN public.tenant_registry.db_name       IS 'PostgreSQL database name (matches Odoo dbfilter).';
 COMMENT ON COLUMN public.tenant_registry.subdomain     IS 'Subdomain prefix, e.g. "company1" for company1.yourerp.com.';

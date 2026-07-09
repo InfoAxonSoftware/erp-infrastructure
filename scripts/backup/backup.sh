@@ -23,6 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # ── Load environment ──────────────────────────────────────────────────────────
+[[ -f "${REPO_ROOT}/.env" ]] || { echo "ERROR: .env file not found." >&2; exit 1; }
 set -a; source "${REPO_ROOT}/.env"; set +a
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
@@ -50,14 +51,18 @@ done
 
 mkdir -p "${BACKUP_BASE}/postgres" "${BACKUP_BASE}/filestore"
 
+warn "Local backups are useful for quick rollback, but they are not disaster recovery."
+warn "Copy backups to off-server storage such as S3, another VPS, or a secure archive."
+
 # =============================================================================
 if [[ "${FILESTORE_ONLY}" != "true" ]]; then
     info "Backing up PostgreSQL databases..."
     # =============================================================================
 
-    # Get list of all user databases (excluding system dbs)
+    # Get all Odoo/user databases. The maintenance postgres database is handled
+    # separately for the optional registry dump below.
     DATABASES=$(docker exec erp-postgres \
-        psql -U "${POSTGRES_USER}" -t -A \
+        psql -U "${POSTGRES_USER}" -d postgres -t -A \
         -c "SELECT datname FROM pg_database WHERE datistemplate=false AND datname NOT IN ('postgres','template0','template1');")
 
     if [[ -z "${DATABASES}" ]]; then
@@ -77,15 +82,19 @@ if [[ "${FILESTORE_ONLY}" != "true" ]]; then
         done
     fi
 
-    # Also dump the tenant_registry from postgres DB
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
-        pg_dump \
-            -U "${POSTGRES_USER}" \
-            --format=custom \
-            --compress=9 \
-            --table=public.tenant_registry \
-            postgres \
-        > "${BACKUP_BASE}/postgres/_registry.dump" 2>/dev/null || true
+    if docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
+        psql -U "${POSTGRES_USER}" -d postgres -t -A \
+        -c "SELECT to_regclass('public.tenant_registry') IS NOT NULL;" 2>/dev/null | grep -q t; then
+        info "  Dumping registry table from postgres database"
+        docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
+            pg_dump \
+                -U "${POSTGRES_USER}" \
+                --format=custom \
+                --compress=9 \
+                --table=public.tenant_registry \
+                postgres \
+            > "${BACKUP_BASE}/postgres/_registry.dump"
+    fi
 
     success "PostgreSQL backup complete."
 fi
@@ -113,6 +122,7 @@ ERP Platform Backup
 Timestamp : ${TIMESTAMP}
 Host      : $(hostname)
 DB User   : ${POSTGRES_USER}
+Warning   : Local-only backups are not disaster recovery. Keep an off-server copy.
 
 Databases backed up:
 $(ls "${BACKUP_BASE}/postgres/" 2>/dev/null | sed 's/^/  - /' || echo "  (none)")

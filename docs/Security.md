@@ -23,8 +23,10 @@ ufw status | grep 5432
 
 **Blocked by default:**
 - Port 5432 (PostgreSQL) — accessible only within the `backend` Docker network
-- Port 8069 (Odoo) — accessible only through Nginx
 - Port 8072 (Odoo longpolling) — internal only
+
+**Temporarily open:**
+- Port 8069 (Odoo demo) — direct access at `http://SERVER_IP:8069` until the demo access model changes
 
 ---
 
@@ -85,7 +87,7 @@ All containers run as non-root users:
 ### Network isolation
 - PostgreSQL is only accessible from the `backend` network
 - React and Nginx are only on the `frontend` network
-- Odoo bridges both networks but is not directly exposed
+- Odoo bridges both networks and is temporarily exposed on host port `8069` for direct demo access
 
 ### Read-only config mounts
 ```yaml
@@ -99,13 +101,10 @@ All containers run as non-root users:
 - `ODOO_ADMIN_PASSWORD` is injected at runtime via `entrypoint.sh`
 
 ### Resource limits (compose.prod.yml)
-Memory and CPU limits prevent a single container from exhausting the server:
+Memory and CPU limits are tuned for the current 1 vCPU / 2 GB RAM server and use Compose-enforced keys:
 ```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '4.0'
-      memory: 4G
+cpus: '0.80'
+mem_limit: 1100m
 ```
 
 ---
@@ -150,7 +149,7 @@ ssl_stapling_verify       on;
 
 **Achieves an A+ rating on SSL Labs.**
 
-Let's Encrypt certificates auto-renew via cron (registered by `setup-ssl.sh`).
+Let's Encrypt uses HTTP-01 certificates only for `infoaxon.lk` and `www.infoaxon.lk`. Certbot renewal uses its normal timer plus a deploy hook that copies renewed certs into the Nginx-mounted `ssl/` directory and reloads Nginx.
 
 ---
 
@@ -158,16 +157,13 @@ Let's Encrypt certificates auto-renew via cron (registered by `setup-ssl.sh`).
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| `list_db = False` | Disabled | Prevents enumeration of tenant databases |
+| `list_db = False` | Disabled | Prevents public database listing |
+| `dbfilter = ^infoaxon_erp$` | Fixed demo DB | Keeps direct IP access focused on the demo database |
 | `proxy_mode = True` | Enabled | Trusts X-Forwarded-For from Nginx |
 | `admin_passwd` | Random 32+ chars | Protects database manager |
-| `/web/database/manager` | Blocked in Nginx | Additional layer of protection |
+| `/web/database/manager` | Not protected by Nginx for direct `8069` access | Temporary risk accepted for demos |
 
-**Nginx blocks direct access to the DB manager:**
-```nginx
-location = /web/database/manager  { deny all; return 403; }
-location = /web/database/selector { deny all; return 403; }
-```
+The Odoo database listing is disabled in Odoo itself. Because Odoo is temporarily reachable on `8069`, requests do not pass through the website Nginx server. That means Nginx rate limits and Nginx database-manager blocks do not protect direct Odoo traffic. Keep the master password strong, avoid sharing the demo URL broadly, monitor logs, and remove direct access when the demo requirement ends.
 
 ---
 
@@ -216,10 +212,12 @@ Before going to production, verify:
 - [ ] SSH password authentication is disabled
 - [ ] UFW is enabled with correct rules
 - [ ] Fail2Ban is running
-- [ ] SSL certificates are valid (`curl -I https://yourerp.com`)
+- [ ] SSL certificates are valid (`curl -I https://infoaxon.lk`)
 - [ ] HSTS header is present
-- [ ] Odoo DB manager is inaccessible from browser
+- [ ] Odoo database listing is disabled
+- [ ] Temporary public Odoo port 8069 is still required and understood
 - [ ] PostgreSQL port 5432 is not reachable from outside
+- [ ] Odoo gevent port 8072 is not reachable from outside
 - [ ] Backups are running and tested
 - [ ] Docker images are up to date (`docker compose pull`)
 - [ ] OS is up to date (`apt upgrade`)

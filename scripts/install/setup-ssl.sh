@@ -1,76 +1,104 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup-ssl.sh — Obtain Let's Encrypt Wildcard Certificates
+# setup-ssl.sh - Let's Encrypt SSL for the React company website
 # =============================================================================
-# Called by deploy.sh --ssl  or  run manually after DNS is configured.
-#
-# Usage:
-#   bash scripts/install/setup-ssl.sh <domain>
-#
-# Requirements:
-#   - certbot installed (done by install.sh)
-#   - DNS A records pointing to this server:
-#       yourerp.com           → <server-ip>
-#       *.yourerp.com         → <server-ip>
-#   - Ports 80 and 443 open in UFW
+# Obtains/renews HTTP-01 certificates for infoaxon.lk and www.infoaxon.lk only.
+# Odoo is intentionally left on temporary direct IP access at port 8069.
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[INFO]${NC}  $*"; }
 success() { echo -e "${GREEN}[OK]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-DOMAIN="${1:-}"
-[[ -z "${DOMAIN}" ]] && { set -a; source "${REPO_ROOT}/.env"; set +a; DOMAIN="${DOMAIN:-}"; }
-[[ -z "${DOMAIN}" ]] && error "Usage: $0 <domain>"
+ENV_FILE="${REPO_ROOT}/.env"
+[[ -f "${ENV_FILE}" ]] || error ".env file not found."
 
-SSL_DIR="${REPO_ROOT}/ssl"
-mkdir -p "${SSL_DIR}"
+set -a
+source "${ENV_FILE}"
+set +a
 
-# ── Check if cert already exists and is valid ─────────────────────────────────
-if certbot certificates --domain "${DOMAIN}" 2>/dev/null | grep -q "VALID"; then
-    success "Certificate for ${DOMAIN} is already valid."
-    info "Renewing certificate..."
-    certbot renew --quiet --non-interactive
-    success "Certificate renewed."
+DOMAIN="${1:-${DOMAIN:-}}"
+[[ -z "${DOMAIN}" ]] && error "Usage: $0 infoaxon.lk"
+[[ "${DOMAIN}" == "infoaxon.lk" ]] || error "This deployment only configures SSL for infoaxon.lk and www.infoaxon.lk."
+
+command -v certbot &>/dev/null || error "certbot is not installed. Run scripts/install/install.sh first."
+command -v docker &>/dev/null || error "docker is required."
+
+if [[ "${EUID}" -eq 0 ]]; then
+    SUDO=()
 else
-    info "Requesting certificate for ${DOMAIN} and *.${DOMAIN}..."
-    info "This requires DNS validation. You will be prompted to create a TXT record."
-
-    certbot certonly \
-        --manual \
-        --preferred-challenges dns \
-        --agree-tos \
-        --no-eff-email \
-        -d "${DOMAIN}" \
-        -d "*.${DOMAIN}"
+    command -v sudo &>/dev/null || error "sudo is required to read Let's Encrypt certificates."
+    SUDO=(sudo)
 fi
 
-# ── Link certificates to the ssl/ directory expected by nginx ─────────────────
-CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
-ln -sfn "${CERT_PATH}" "${SSL_DIR}/live"
+COMPOSE_CMD=(docker compose --env-file "${ENV_FILE}" -f "${REPO_ROOT}/docker/compose.yml" -f "${REPO_ROOT}/docker/compose.prod.yml")
+WEBROOT="${REPO_ROOT}/ssl/certbot/www"
+NGINX_CERT_DIR="${REPO_ROOT}/ssl/live/${DOMAIN}"
+LE_CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 
-success "Certificates linked to ${SSL_DIR}/live/"
+mkdir -p "${WEBROOT}" "${NGINX_CERT_DIR}"
 
-# ── Uncomment HTTPS server blocks in nginx templates ─────────────────────────
-TEMPLATE_DIR="${REPO_ROOT}/config/nginx/templates"
-for f in "${TEMPLATE_DIR}"/*.template; do
-    # Uncomment SSL server block (lines between # server { ... # })
-    sed -i 's/^# //' "${f}" 2>/dev/null || true
-done
+set_env_value() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^${key}=" "${ENV_FILE}"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
+    else
+        printf '\n%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+    fi
+    export "${key}=${value}"
+}
 
-info "Nginx templates updated. Reloading nginx..."
-docker exec erp-nginx nginx -t && docker exec erp-nginx nginx -s reload
+copy_certs() {
+    [[ -f "${LE_CERT_DIR}/fullchain.pem" ]] || error "Certificate not found at ${LE_CERT_DIR}/fullchain.pem"
+    "${SUDO[@]}" install -m 0644 "${LE_CERT_DIR}/fullchain.pem" "${NGINX_CERT_DIR}/fullchain.pem"
+    "${SUDO[@]}" install -m 0640 "${LE_CERT_DIR}/privkey.pem" "${NGINX_CERT_DIR}/privkey.pem"
+    "${SUDO[@]}" chown "$(id -u):$(id -g)" "${NGINX_CERT_DIR}/fullchain.pem" "${NGINX_CERT_DIR}/privkey.pem" 2>/dev/null || true
+}
 
-success "SSL configured. Your site is now available at https://${DOMAIN}"
+info "Ensuring Nginx is running with the HTTP challenge webroot..."
+set_env_value "NGINX_TEMPLATE_PROFILE" "http"
+"${COMPOSE_CMD[@]}" up -d nginx
 
-# ── Set up auto-renewal via cron ──────────────────────────────────────────────
-CRON_JOB="0 3 * * * certbot renew --quiet --post-hook 'docker exec erp-nginx nginx -s reload'"
-(crontab -l 2>/dev/null | grep -qF "certbot renew") \
-    || (crontab -l 2>/dev/null; echo "${CRON_JOB}") | crontab -
+info "Requesting/renewing HTTP-01 certificate for ${DOMAIN} and www.${DOMAIN}..."
+"${SUDO[@]}" certbot certonly \
+    --webroot \
+    --webroot-path "${WEBROOT}" \
+    --cert-name "${DOMAIN}" \
+    --agree-tos \
+    --no-eff-email \
+    --non-interactive \
+    --email "admin@${DOMAIN}" \
+    -d "${DOMAIN}" \
+    -d "www.${DOMAIN}"
 
-success "Auto-renewal cron job registered."
+info "Copying certificates into the repository ssl/ directory for the Nginx container..."
+copy_certs
+
+info "Enabling HTTPS Nginx template profile..."
+set_env_value "NGINX_TEMPLATE_PROFILE" "https"
+"${COMPOSE_CMD[@]}" up -d nginx
+docker exec erp-nginx nginx -t
+docker exec erp-nginx nginx -s reload
+
+HOOK="/etc/letsencrypt/renewal-hooks/deploy/infoaxon-nginx-copy.sh"
+info "Installing renewal deploy hook..."
+"${SUDO[@]}" mkdir -p "$(dirname "${HOOK}")"
+"${SUDO[@]}" tee "${HOOK}" >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+install -m 0644 "${LE_CERT_DIR}/fullchain.pem" "${NGINX_CERT_DIR}/fullchain.pem"
+install -m 0640 "${LE_CERT_DIR}/privkey.pem" "${NGINX_CERT_DIR}/privkey.pem"
+docker exec erp-nginx nginx -t
+docker exec erp-nginx nginx -s reload
+EOF
+"${SUDO[@]}" chmod +x "${HOOK}"
+
+success "SSL configured for https://${DOMAIN} and https://www.${DOMAIN}."
+warn "Renewal uses Certbot's normal renewal timer plus the deploy hook above. No wildcard DNS renewal is configured or needed."

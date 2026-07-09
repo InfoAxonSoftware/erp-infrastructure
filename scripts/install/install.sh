@@ -28,7 +28,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-/opt/erp}"
 SSH_PORT="${SSH_PORT:-22}"
 
 # =============================================================================
-info "Step 1/9 — System update"
+info "Step 1/10 - System update"
 # =============================================================================
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
@@ -39,7 +39,7 @@ apt-get install -y -q \
     apt-transport-https software-properties-common
 
 # =============================================================================
-info "Step 2/9 — Install Docker Engine"
+info "Step 2/10 - Install Docker Engine"
 # =============================================================================
 if ! command -v docker &>/dev/null; then
     install -m 0755 -d /etc/apt/keyrings
@@ -61,7 +61,7 @@ else
 fi
 
 # =============================================================================
-info "Step 3/9 — Create deploy user: ${DEPLOY_USER}"
+info "Step 3/10 - Create deploy user: ${DEPLOY_USER}"
 # =============================================================================
 if ! id "${DEPLOY_USER}" &>/dev/null; then
     useradd -m -s /bin/bash -G docker,sudo "${DEPLOY_USER}"
@@ -83,14 +83,14 @@ if [[ -f /root/.ssh/authorized_keys ]] && [[ ! -f "${DEPLOY_HOME}/.ssh/authorize
 fi
 
 # =============================================================================
-info "Step 4/9 — Create directory structure"
+info "Step 4/10 - Create directory structure"
 # =============================================================================
-mkdir -p "${DEPLOY_DIR}"/{backups,logs/{nginx,odoo},ssl}
+mkdir -p "${DEPLOY_DIR}"/{backups,logs/{nginx,odoo},ssl/certbot/www}
 chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${DEPLOY_DIR}"
 success "Deploy directory: ${DEPLOY_DIR}"
 
 # =============================================================================
-info "Step 5/9 — Configure UFW firewall"
+info "Step 5/10 - Configure UFW firewall"
 # =============================================================================
 ufw --force reset
 ufw default deny incoming
@@ -99,17 +99,18 @@ ufw default allow outgoing
 ufw allow "${SSH_PORT}/tcp" comment 'SSH'
 ufw allow 80/tcp   comment 'HTTP'
 ufw allow 443/tcp  comment 'HTTPS'
+ufw allow 8069/tcp comment 'Temporary direct Odoo demo access'
 
-# Docker internal networks (do NOT expose Odoo/Postgres ports directly)
+# Docker internal networks
 ufw deny 5432/tcp  comment 'Block direct PostgreSQL access'
-ufw deny 8069/tcp  comment 'Block direct Odoo access'
+ufw deny 8072/tcp  comment 'Block direct Odoo gevent access'
 
 ufw --force enable
 ufw status verbose
 success "UFW firewall configured."
 
 # =============================================================================
-info "Step 6/9 — Configure Fail2Ban"
+info "Step 6/10 - Configure Fail2Ban"
 # =============================================================================
 cat > /etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
@@ -148,7 +149,7 @@ systemctl restart fail2ban
 success "Fail2Ban configured and started."
 
 # =============================================================================
-info "Step 7/9 — SSH hardening"
+info "Step 7/10 - SSH hardening"
 # =============================================================================
 SSHD_CONFIG=/etc/ssh/sshd_config
 
@@ -182,7 +183,7 @@ sshd -t && systemctl reload sshd
 success "SSH hardened. Root password login disabled."
 
 # =============================================================================
-info "Step 8/9 — System performance tuning"
+info "Step 8/10 - System performance tuning"
 # =============================================================================
 cat >> /etc/sysctl.conf <<'EOF'
 
@@ -208,7 +209,30 @@ root hard nofile 65535
 EOF
 
 # =============================================================================
-info "Step 9/9 — Install certbot (Let's Encrypt)"
+info "Step 9/10 - Configure 2 GB swap"
+# =============================================================================
+SWAP_FILE="${SWAP_FILE:-/swapfile}"
+SWAP_SIZE_MB="${SWAP_SIZE_MB:-2048}"
+
+if swapon --show=NAME | grep -qx "${SWAP_FILE}"; then
+    success "Swap already active at ${SWAP_FILE}."
+elif [[ -f "${SWAP_FILE}" ]]; then
+    chmod 600 "${SWAP_FILE}"
+    mkswap "${SWAP_FILE}" >/dev/null 2>&1 || true
+    swapon "${SWAP_FILE}"
+    grep -qF "${SWAP_FILE}" /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
+    success "Existing swap file activated at ${SWAP_FILE}."
+else
+    fallocate -l "${SWAP_SIZE_MB}M" "${SWAP_FILE}" || dd if=/dev/zero of="${SWAP_FILE}" bs=1M count="${SWAP_SIZE_MB}"
+    chmod 600 "${SWAP_FILE}"
+    mkswap "${SWAP_FILE}" >/dev/null
+    swapon "${SWAP_FILE}"
+    grep -qF "${SWAP_FILE}" /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
+    success "Created and enabled ${SWAP_SIZE_MB} MB swap at ${SWAP_FILE}."
+fi
+
+# =============================================================================
+info "Step 10/10 - Install certbot (Let's Encrypt)"
 # =============================================================================
 if ! command -v certbot &>/dev/null; then
     snap install --classic certbot
@@ -231,10 +255,10 @@ echo ""
 echo "  2. Configure environment:"
 echo "       cd ${DEPLOY_DIR}/repo"
 echo "       cp .env.example .env"
-echo "       nano .env  # Set DOMAIN, POSTGRES_PASSWORD, ODOO_ADMIN_PASSWORD"
+echo "       nano .env  # Set DOMAIN, POSTGRES_PASSWORD, ODOO_ADMIN_PASSWORD, REACT_REPO_URL"
 echo ""
 echo "  3. Deploy:"
-echo "       bash scripts/deploy.sh"
+echo "       bash scripts/install/deploy.sh"
 echo ""
 echo "  WARNING: Ensure your DNS records point to this server's IP before"
 echo "           requesting SSL certificates."

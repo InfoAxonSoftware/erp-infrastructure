@@ -1,0 +1,31 @@
+# React company website over HTTP.
+
+server {
+    listen       80;
+    server_name  ${DOMAIN} www.${DOMAIN};
+
+    # ── Security headers ──────────────────────────────────────────────────────
+    add_header  X-Frame-Options           "SAMEORIGIN"                    always;
+    add_header  X-Content-Type-Options    "nosniff"                       always;
+    add_header  X-XSS-Protection          "1; mode=block"                 always;
+    add_header  Referrer-Policy           "strict-origin-when-cross-origin" always;
+    add_header  Permissions-Policy        "camera=(), microphone=(), geolocation=()" always;
+
+    # ── Internal health check (used by Docker) ────────────────────────────────
+    location = /health {
+        access_log  off;
+        return 200 "healthy\n";
+        add_header  Content-Type  text/plain;
+    }
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # ── Proxy to React container ──────────────────────────────────────────────
+    location / {
+        limit_req   zone=general  burst=30  nodelay;
+        limit_conn  addr          30;
+        proxy_pass  http://react:80;
+    }
+}

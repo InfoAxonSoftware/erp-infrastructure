@@ -24,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # ── Load environment ──────────────────────────────────────────────────────────
+[[ -f "${REPO_ROOT}/.env" ]] || { echo "ERROR: .env file not found." >&2; exit 1; }
 set -a; source "${REPO_ROOT}/.env"; set +a
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
@@ -65,11 +66,13 @@ done
 POSTGRES_USER="${POSTGRES_USER:-odoo}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?Missing POSTGRES_PASSWORD}"
 ODOO_VOLUME="erp-platform_odoo_filestore"
+COMPOSE_CMD=(docker compose --env-file "${REPO_ROOT}/.env" -f "${REPO_ROOT}/docker/compose.yml" -f "${REPO_ROOT}/docker/compose.prod.yml")
 
 # =============================================================================
 info "Backup selected: ${TIMESTAMP}"
 cat "${BACKUP_DIR}/manifest.txt" 2>/dev/null || true
 echo ""
+warn "A backup stored only on this server is not disaster recovery."
 confirm "This will OVERWRITE existing data. Continue?"
 # =============================================================================
 
@@ -77,7 +80,7 @@ confirm "This will OVERWRITE existing data. Continue?"
 # Stop Odoo to prevent writes during restore
 # =============================================================================
 info "Stopping Odoo container to prevent write conflicts..."
-docker compose -f "${REPO_ROOT}/docker/compose.yml" -f "${REPO_ROOT}/docker/compose.prod.yml" stop odoo
+"${COMPOSE_CMD[@]}" stop odoo
 
 # =============================================================================
 restore_database() {
@@ -122,10 +125,26 @@ fi
 
 if [[ "${RESTORE_ALL_DBS}" == "true" ]]; then
     for DUMP_FILE in "${BACKUP_DIR}/postgres/"*.dump; do
+        [[ -e "${DUMP_FILE}" ]] || error "No database dumps found in ${BACKUP_DIR}/postgres"
         DB="$(basename "${DUMP_FILE}" .dump)"
         [[ "${DB}" == "_registry" ]] && continue
         restore_database "${DB}"
     done
+
+    REGISTRY_DUMP="${BACKUP_DIR}/postgres/_registry.dump"
+    if [[ -f "${REGISTRY_DUMP}" ]]; then
+        info "Restoring tenant registry dump into postgres database..."
+        docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" erp-postgres \
+            pg_restore \
+                -U "${POSTGRES_USER}" \
+                -d postgres \
+                --no-owner \
+                --role="${POSTGRES_USER}" \
+                --clean \
+                --if-exists \
+            < "${REGISTRY_DUMP}"
+        success "Registry dump restored."
+    fi
 fi
 
 # ── Restore filestore ─────────────────────────────────────────────────────────
@@ -148,7 +167,7 @@ fi
 # =============================================================================
 info "Restarting Odoo..."
 # =============================================================================
-docker compose -f "${REPO_ROOT}/docker/compose.yml" -f "${REPO_ROOT}/docker/compose.prod.yml" start odoo
+"${COMPOSE_CMD[@]}" start odoo
 success "Odoo restarted."
 
 echo ""

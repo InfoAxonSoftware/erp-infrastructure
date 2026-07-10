@@ -13,7 +13,7 @@ services:
 
   odoo:
     restart: unless-stopped
-    cpus: "0.70"
+    cpus: "0.85"
     mem_limit: 900m
     mem_reservation: 512m
     logging:

@@ -24,6 +24,13 @@ RUN mkdir -p /var/lib/odoo/filestore \
 COPY entrypoint.sh /custom-entrypoint.sh
 RUN chmod +x /custom-entrypoint.sh
 
+# Python dependencies required by base_accounting_kit
+RUN pip3 install --no-cache-dir \
+    openpyxl \
+    ofxparse \
+    qifparse \
+    --break-system-packages
+
 USER odoo
 
 EXPOSE 8069 8071 8072

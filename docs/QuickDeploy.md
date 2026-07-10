@@ -33,6 +33,30 @@ bash scripts/backup/backup.sh
 bash scripts/restore/restore.sh <timestamp> --all-dbs --filestore
 ```
 
+## Third-Party Odoo Addons
+
+Before installing third-party modules, take a backup:
+
+```bash
+bash scripts/backup/backup.sh
+```
+
+Copy or extract the Odoo 18 addon directory into `custom-addons/`. For example, `base_accounting_kit` should end up as:
+
+```text
+custom-addons/base_accounting_kit/__manifest__.py
+```
+
+Do not commit downloaded third-party module code unless its license permits redistribution.
+
+Redeploy so Odoo sees the mounted addon path:
+
+```bash
+bash scripts/install/deploy.sh
+```
+
+Then open Odoo, enable developer mode if needed, update the Apps List, search for the module in Apps, and install it from there.
+
 ## Database Manager
 
 Open:

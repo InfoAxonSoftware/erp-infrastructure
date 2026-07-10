@@ -68,6 +68,7 @@ services:
       - odoo_data:/var/lib/odoo
       - odoo_filestore:/var/lib/odoo/filestore
       - ../config/odoo/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ../custom-addons:/mnt/extra-addons:ro
       - ../logs/odoo:/var/log/odoo
     ports:
       - "8069:8069"

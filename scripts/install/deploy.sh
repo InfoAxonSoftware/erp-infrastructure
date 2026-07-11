@@ -107,7 +107,9 @@ else
 fi
 success "React source is ready at docker/react/app."
 
-[[ -f "${REACT_APP_DIR}/server/package.json" ]] || error "External repo must contain server/package.json."
+[[ -f "${REACT_APP_DIR}/package.json" ]] || error "External repo must contain package.json at its root."
+[[ -f "${REACT_APP_DIR}/package-lock.json" ]] || error "External repo must contain package-lock.json at its root."
+[[ -f "${REACT_APP_DIR}/server/index.js" ]] || error "External repo must contain server/index.js."
 [[ -f "${REACT_APP_DIR}/server/prisma/schema.prisma" ]] || error "External repo must contain server/prisma/schema.prisma."
 [[ -f "${REPO_ROOT}/docker/company-backend/.env.production" ]] || \
     error "Create docker/company-backend/.env.production from .env.production.example."
@@ -137,7 +139,7 @@ info "Building Docker images..."
 success "Images built."
 
 info "Applying Prisma production migrations..."
-"${COMPOSE_CMD[@]}" run --rm --no-deps company-backend npx prisma migrate deploy
+"${COMPOSE_CMD[@]}" run --rm --no-deps company-backend npx prisma migrate deploy --schema=server/prisma/schema.prisma
 success "Prisma migrations applied."
 
 info "Fixing Odoo log directory ownership..."

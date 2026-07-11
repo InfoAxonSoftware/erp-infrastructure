@@ -47,8 +47,9 @@ set +a
 : "${ODOO_ADMIN_PASSWORD:?Missing ODOO_ADMIN_PASSWORD in .env}"
 : "${DOMAIN:?Missing DOMAIN in .env}"
 : "${REACT_REPO_URL:?Missing REACT_REPO_URL in .env}"
+: "${WEBSITE_DB_PASSWORD:?Missing WEBSITE_DB_PASSWORD in .env}"
 
-if [[ "${POSTGRES_PASSWORD}" == "CHANGE_ME" || "${ODOO_ADMIN_PASSWORD}" == "CHANGE_ME" ]]; then
+if [[ "${POSTGRES_PASSWORD}" == "CHANGE_ME" || "${ODOO_ADMIN_PASSWORD}" == "CHANGE_ME" || "${WEBSITE_DB_PASSWORD}" == "CHANGE_ME" ]]; then
     error "Replace CHANGE_ME secrets in .env before deploying."
 fi
 
@@ -106,6 +107,27 @@ else
 fi
 success "React source is ready at docker/react/app."
 
+[[ -f "${REACT_APP_DIR}/server/package.json" ]] || error "External repo must contain server/package.json."
+[[ -f "${REACT_APP_DIR}/server/prisma/schema.prisma" ]] || error "External repo must contain server/prisma/schema.prisma."
+[[ -f "${REPO_ROOT}/docker/company-backend/.env.production" ]] || \
+    error "Create docker/company-backend/.env.production from .env.production.example."
+
+info "Starting PostgreSQL and ensuring the website database/user exist..."
+"${COMPOSE_CMD[@]}" up -d --wait postgres
+"${COMPOSE_CMD[@]}" exec -T postgres psql \
+    --username "${POSTGRES_USER:-odoo}" --dbname postgres \
+    --set=website_user="${WEBSITE_DB_USER:-infoaxon_web}" \
+    --set=website_db="${WEBSITE_DB_NAME:-infoaxon_website}" \
+    --set=website_password="${WEBSITE_DB_PASSWORD}" <<'SQL'
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'website_user', :'website_password')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'website_user') \gexec
+SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'website_user', :'website_password') \gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'website_db', :'website_user')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'website_db') \gexec
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'website_db', :'website_user') \gexec
+SQL
+success "Website database is ready."
+
 info "Validating Docker Compose configuration..."
 "${COMPOSE_CMD[@]}" config >/dev/null
 success "Compose configuration is valid."
@@ -113,6 +135,10 @@ success "Compose configuration is valid."
 info "Building Docker images..."
 "${COMPOSE_CMD[@]}" build --pull
 success "Images built."
+
+info "Applying Prisma production migrations..."
+"${COMPOSE_CMD[@]}" run --rm --no-deps company-backend npx prisma migrate deploy
+success "Prisma migrations applied."
 
 info "Fixing Odoo log directory ownership..."
 ODOO_UID_GID="$("${COMPOSE_CMD[@]}" run --rm --no-deps --entrypoint sh odoo -c 'printf "%s:%s" "$(id -u)" "$(id -g)"')"
@@ -124,11 +150,12 @@ else
 fi
 chmod -R u+rwX,g+rwX "${REPO_ROOT}/logs/odoo"
 
-info "Stopping existing containers, if any..."
-"${COMPOSE_CMD[@]}" down --remove-orphans 2>/dev/null || true
+info "Starting/recreating changed services without removing volumes..."
+"${COMPOSE_CMD[@]}" up -d --remove-orphans
 
-info "Starting services..."
-"${COMPOSE_CMD[@]}" up -d
+info "Checking Nginx configuration..."
+"${COMPOSE_CMD[@]}" exec -T nginx nginx -t
+success "Nginx configuration is valid."
 
 info "Waiting for Odoo to become healthy (max 3 minutes)..."
 timeout=180

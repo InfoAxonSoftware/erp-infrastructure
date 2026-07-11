@@ -11,7 +11,17 @@ nano .env
 bash scripts/install/deploy.sh
 ```
 
-Configure `DOMAIN`, `POSTGRES_PASSWORD`, `ODOO_ADMIN_PASSWORD`, `REACT_REPO_URL`, and `REACT_BRANCH` in `.env` before deployment.
+Configure `DOMAIN`, `POSTGRES_PASSWORD`, `ODOO_ADMIN_PASSWORD`, `WEBSITE_DB_PASSWORD`, `REACT_REPO_URL`, and `REACT_BRANCH` in `.env` before deployment. Also run:
+
+```bash
+cp docker/company-backend/.env.production.example docker/company-backend/.env.production
+chmod 600 docker/company-backend/.env.production
+nano docker/company-backend/.env.production
+```
+
+The backend env file is gitignored. Configure `JWT_SECRET`, `JWT_EXPIRES_IN`, `CLIENT_URL`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, and `UPLOAD_MAX_SIZE`. Compose supplies `DATABASE_URL`, `NODE_ENV=production`, and `PORT=5000`. The backend is not published on a host port.
+
+The external website repository must provide `server/package.json` with a production `start` script, `server/package-lock.json`, `server/prisma/schema.prisma`, committed production migrations under `server/prisma/migrations/`, and an idempotent seed script if seeding is supported. The Express process must write uploads relative to its `/app` working directory so `server/uploads` becomes `/app/uploads`, which is the persistent `website_uploads` mount. If the application supports an `UPLOAD_DIR` variable instead, set it to `/app/uploads`. Its frontend production configuration must call relative `/api` and `/uploads` URLs; it must not bake `localhost:5000` into the production bundle.
 
 ## Normal Update
 
@@ -20,6 +30,34 @@ cd /opt/erp/repo
 git pull origin main
 bash scripts/install/deploy.sh
 ```
+
+The deploy pulls the external repository, builds both images, creates/updates the separate `infoaxon_web` role and `infoaxon_website` database, runs `prisma migrate deploy`, and recreates only changed containers. It never runs `down -v` or deletes named volumes.
+
+## Website Backend Operations
+
+Apply committed migrations manually:
+
+```bash
+docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml run --rm company-backend npx prisma migrate deploy
+```
+
+Run the external repo's seed only after confirming it is idempotent (upsert/skip-existing behavior):
+
+```bash
+docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml run --rm company-backend npx prisma db seed
+```
+
+The deploy intentionally does not seed automatically. To create or rotate the production admin password, update `INITIAL_ADMIN_PASSWORD` in `docker/company-backend/.env.production`, then run the external server's documented idempotent admin seed/CLI command. If its seed consumes `INITIAL_ADMIN_PASSWORD`, run the seed command above, remove the plaintext value afterward if the app no longer needs it at runtime, and recreate the backend with `docker compose ... up -d --force-recreate company-backend`. Rotating this env value alone does not change an already-hashed database password unless the external app explicitly implements that behavior. The seed must use create-if-missing/upsert behavior and must not overwrite an existing administrator password on routine deployment.
+
+Logs and status:
+
+```bash
+docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml ps
+docker logs --tail 100 -f erp-company-backend
+docker logs --tail 100 -f erp-nginx
+```
+
+Rollback: check out the previous infrastructure revision and the previous external website revision, then run the deploy script. Prisma migrations are forward-only in normal production use; before a destructive migration, take a database backup and write/test an explicit compensating migration. Do not use `prisma migrate dev`, delete `postgres_data`/`website_uploads`, or run `docker compose down -v`.
 
 ## Backup
 
@@ -98,4 +136,5 @@ docker stats --no-stream
 docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml config
 docker logs --tail 50 erp-odoo
 docker logs --tail 50 erp-postgres
+docker logs --tail 50 erp-company-backend
 ```

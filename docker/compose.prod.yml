@@ -43,3 +43,14 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  company-backend:
+    restart: unless-stopped
+    cpus: "0.20"
+    mem_limit: 256m
+    mem_reservation: 96m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

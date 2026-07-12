@@ -159,7 +159,7 @@ docker buildx inspect --bootstrap >/dev/null
 success "BuildKit builder is ready on erp-platform_backend network."
 
 info "Building React after migrations, then the remaining service images..."
-"${COMPOSE_CMD[@]}" build --pull react
+DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 "${COMPOSE_CMD[@]}" build --pull react
 "${COMPOSE_CMD[@]}" build --pull odoo nginx
 success "React, Odoo, and Nginx images built."
 

@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev=false
 COPY server ./server
+COPY src ./src
 RUN npx prisma generate --schema=server/prisma/schema.prisma
 RUN npm prune --omit=dev
 

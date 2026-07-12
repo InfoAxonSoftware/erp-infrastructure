@@ -48,6 +48,8 @@ set +a
 : "${DOMAIN:?Missing DOMAIN in .env}"
 : "${REACT_REPO_URL:?Missing REACT_REPO_URL in .env}"
 : "${WEBSITE_DB_PASSWORD:?Missing WEBSITE_DB_PASSWORD in .env}"
+: "${VITE_SITE_URL:=https://infoaxon.lk}"
+export VITE_SITE_URL
 
 if [[ "${POSTGRES_PASSWORD}" == "CHANGE_ME" || "${ODOO_ADMIN_PASSWORD}" == "CHANGE_ME" || "${WEBSITE_DB_PASSWORD}" == "CHANGE_ME" ]]; then
     error "Replace CHANGE_ME secrets in .env before deploying."
@@ -134,13 +136,18 @@ info "Validating Docker Compose configuration..."
 "${COMPOSE_CMD[@]}" config >/dev/null
 success "Compose configuration is valid."
 
-info "Building Docker images..."
-"${COMPOSE_CMD[@]}" build --pull
-success "Images built."
+info "Building the company backend image for Prisma migrations..."
+"${COMPOSE_CMD[@]}" build --pull company-backend
+success "Company backend image built."
 
 info "Applying Prisma production migrations..."
 "${COMPOSE_CMD[@]}" run --rm --no-deps company-backend npx prisma migrate deploy --schema=server/prisma/schema.prisma
 success "Prisma migrations applied."
+
+info "Building React after migrations, then the remaining service images..."
+"${COMPOSE_CMD[@]}" build --pull react
+"${COMPOSE_CMD[@]}" build --pull odoo nginx
+success "React, Odoo, and Nginx images built."
 
 info "Fixing Odoo log directory ownership..."
 ODOO_UID_GID="$("${COMPOSE_CMD[@]}" run --rm --no-deps --entrypoint sh odoo -c 'printf "%s:%s" "$(id -u)" "$(id -g)"')"

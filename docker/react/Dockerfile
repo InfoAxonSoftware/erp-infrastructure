@@ -6,6 +6,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /build
 
+ARG DATABASE_URL
+ARG VITE_SITE_URL
+ARG VITE_GOOGLE_SITE_VERIFICATION
+
+ENV DATABASE_URL=$DATABASE_URL
+ENV VITE_SITE_URL=$VITE_SITE_URL
+ENV VITE_GOOGLE_SITE_VERIFICATION=$VITE_GOOGLE_SITE_VERIFICATION
+
 # Install dependencies first (separate layer for better cache reuse)
 COPY app/package*.json ./
 RUN npm ci --silent

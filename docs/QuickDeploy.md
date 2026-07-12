@@ -11,7 +11,7 @@ nano .env
 bash scripts/install/deploy.sh
 ```
 
-Configure `DOMAIN`, `POSTGRES_PASSWORD`, `ODOO_ADMIN_PASSWORD`, `WEBSITE_DB_PASSWORD`, `REACT_REPO_URL`, and `REACT_BRANCH` in `.env` before deployment. Also run:
+Configure `DOMAIN`, `POSTGRES_PASSWORD`, `ODOO_ADMIN_PASSWORD`, `WEBSITE_DB_PASSWORD`, `REACT_REPO_URL`, and `REACT_BRANCH` in `.env` before deployment. Set `VITE_SITE_URL=https://infoaxon.lk`; `VITE_GOOGLE_SITE_VERIFICATION` may be left empty when no verification token is available. Also run:
 
 ```bash
 cp docker/company-backend/.env.production.example docker/company-backend/.env.production
@@ -22,6 +22,8 @@ nano docker/company-backend/.env.production
 The backend env file is gitignored. Configure `JWT_SECRET`, `JWT_EXPIRES_IN`, `CLIENT_URL`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, and `UPLOAD_MAX_SIZE`. Compose supplies `DATABASE_URL`, `NODE_ENV=production`, and `PORT=5000`. The backend is not published on a host port.
 
 The external website repository must provide `package.json` and `package-lock.json` at its root, plus `server/index.js`, `server/prisma/schema.prisma`, committed production migrations under `server/prisma/migrations/`, and an idempotent seed script if seeding is supported. Backend source lives under `server/`, but dependencies are installed from the repository root. The backend image starts with `node server/index.js`. The persistent `website_uploads` volume is mounted at `/app/server/uploads`, matching middleware that writes to `server/uploads` relative to the repository root. Its frontend production configuration must call relative `/api` and `/uploads` URLs; it must not bake `localhost:5000` into the production bundle.
+
+The SEO generation scripts query PostgreSQL through Prisma during the React Docker build, so that build requires a valid production `DATABASE_URL` and network access to the private PostgreSQL service. The deployment starts PostgreSQL, creates or updates the website role/database idempotently, builds the backend image, and runs `prisma migrate deploy` before building React. PostgreSQL stays on the private backend Docker network and is not published on a host port.
 
 ## Normal Update
 
@@ -57,7 +59,7 @@ docker logs --tail 100 -f erp-company-backend
 docker logs --tail 100 -f erp-nginx
 ```
 
-Rollback: check out the previous infrastructure revision and the previous external website revision, then run the deploy script. Prisma migrations are forward-only in normal production use; before a destructive migration, take a database backup and write/test an explicit compensating migration. Do not use `prisma migrate dev`, delete `postgres_data`/`website_uploads`, or run `docker compose down -v`.
+Rollback: check out the previous infrastructure revision and the previous external website revision, then run the deploy script. Prisma migrations are forward-only in normal production use; before a destructive migration, take a database backup and write/test an explicit compensating migration. Never use `prisma migrate reset` in production. Do not use `prisma migrate dev`, delete `postgres_data`/`website_uploads`, or run `docker compose down -v`.
 
 ## Backup
 

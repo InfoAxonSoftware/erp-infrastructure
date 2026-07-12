@@ -12,6 +12,7 @@ RUN npm ci --silent
 
 # Copy the rest of the source and build
 COPY app/ .
+RUN npx prisma generate --schema=server/prisma/schema.prisma
 RUN npm run build
 
 # ── Stage 2: Production ────────────────────────────────────────────────────────

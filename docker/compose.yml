@@ -89,7 +89,7 @@ services:
       context: ./react
       dockerfile: Dockerfile
       args:
-        DATABASE_URL: postgresql://${WEBSITE_DB_USER:-infoaxon_web}:${WEBSITE_DB_PASSWORD:?WEBSITE_DB_PASSWORD is required}@postgres:5432/${WEBSITE_DB_NAME:-infoaxon_website}?schema=public
+        DATABASE_URL: postgresql://${WEBSITE_DB_USER:-infoaxon_web}:${WEBSITE_DB_PASSWORD:?WEBSITE_DB_PASSWORD is required}@erp-postgres:5432/${WEBSITE_DB_NAME:-infoaxon_website}?schema=public
         VITE_SITE_URL: ${VITE_SITE_URL:-https://infoaxon.lk}
         VITE_GOOGLE_SITE_VERIFICATION: ${VITE_GOOGLE_SITE_VERIFICATION:-}
     container_name: erp-react

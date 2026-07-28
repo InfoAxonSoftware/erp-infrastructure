@@ -326,22 +326,17 @@ if [[ "${SELECT_WEBSITE}" == "true" ]]; then
     "${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" run --rm --no-deps company-backend npx prisma migrate deploy --schema=server/prisma/schema.prisma
     success "Prisma migrations applied."
 
-    info "Preparing Docker BuildKit builder for database-driven React SEO build..."
-    if docker buildx inspect erp-platform-builder >/dev/null 2>&1; then
-        docker buildx rm erp-platform-builder >/dev/null 2>&1 || true
-    fi
-
-    docker buildx create \
-        --name erp-platform-builder \
-        --driver docker-container \
-        --driver-opt network=erp-platform_backend \
-        --use >/dev/null
-
-    docker buildx inspect --bootstrap >/dev/null
-    success "BuildKit builder is ready on erp-platform_backend network."
-
     info "Building React..."
-    "${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" build --pull react
+    # The React build queries PostgreSQL during SEO generation (server-side
+    # data used to prerender SEO files), so it needs reach to the Compose
+    # backend network. The classic (non-BuildKit) builder honors the
+    # react.build.network setting in compose.yml; BuildKit's default builder
+    # does not support attaching a custom Compose network to a build, and the
+    # docker-container Buildx builder used previously could not reliably
+    # resolve the backend network's DNS during `npm run build`. This is a
+    # compatibility workaround for the current database-driven build, not the
+    # intended long-term build architecture.
+    DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 "${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" build --pull react
     success "React image built."
 
     info "Building Nginx..."

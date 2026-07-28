@@ -359,13 +359,14 @@ if [[ "${SELECT_ODOO}" == "true" ]]; then
 
     info "Fixing Odoo log directory ownership..."
     ODOO_UID_GID="$("${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" run --rm --no-deps --entrypoint sh odoo -c 'printf "%s:%s" "$(id -u)" "$(id -g)"')"
-    if command -v sudo &>/dev/null; then
-        sudo chown -R "${ODOO_UID_GID}" "${REPO_ROOT}/logs/odoo"
+    if [[ "${EUID}" -eq 0 ]]; then
+        chown -R "${ODOO_UID_GID}" "${REPO_ROOT}/logs/odoo"
+        chmod -R u+rwX,g+rwX "${REPO_ROOT}/logs/odoo"
     else
-        chown -R "${ODOO_UID_GID}" "${REPO_ROOT}/logs/odoo" 2>/dev/null || \
-            warn "Could not chown logs/odoo to ${ODOO_UID_GID}; trying writable permissions instead."
+        command -v sudo &>/dev/null || error "sudo is required to fix Odoo log permissions."
+        sudo chown -R "${ODOO_UID_GID}" "${REPO_ROOT}/logs/odoo"
+        sudo chmod -R u+rwX,g+rwX "${REPO_ROOT}/logs/odoo"
     fi
-    chmod -R u+rwX,g+rwX "${REPO_ROOT}/logs/odoo"
 fi
 
 # -----------------------------------------------------------------------------

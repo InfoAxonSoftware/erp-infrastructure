@@ -46,21 +46,34 @@ Never commit `.env`.
 
 ## 3. Deploy
 
+`docker/compose.yml` gates services behind Compose `profiles`: `postgres` is shared and unprofiled; `react`, `company-backend`, and `nginx` are in the `website` profile; `odoo` is in the `odoo-community` profile. Compose renders the full file for every command, so an inactive profiled service (e.g. `odoo` when only `website` is selected) may be interpolated with an empty default for its stack-specific secret — that service is simply not started. `scripts/install/deploy.sh` is the supported deployment entrypoint and is the actual enforcement point: it validates that a required variable is present *before* invoking Compose, for whichever stack was selected. Raw, unflagged `docker compose up` is not the supported deployment method and starts only the unprofiled `postgres` service.
+
 The official deployment command is:
 
 ```bash
 bash scripts/install/deploy.sh
 ```
 
-The script:
+`--stack` is optional. When omitted it defaults to `website,odoo-community` — the full current stack, deployed exactly as before. Supported values:
 
-- Loads root `.env` explicitly.
-- Clones or updates the external React repo into `docker/react/app`.
-- Validates the combined Compose config.
-- Builds images.
-- Creates required log and SSL directories.
-- Fixes the Odoo log bind-mount permissions using the Odoo container UID/GID.
-- Starts the stack using both Compose files.
+```bash
+bash scripts/install/deploy.sh --stack website
+bash scripts/install/deploy.sh --stack odoo-community
+bash scripts/install/deploy.sh --stack website,odoo-community
+```
+
+`--stack odoo-community,website` (reversed order) is equivalent to `--stack website,odoo-community`. Unknown stack names, empty values, duplicate entries, and `odoo-enterprise` are rejected before anything is changed.
+
+Deploying a subset never stops, removes, or recreates containers for a stack that wasn't selected — `--stack website` leaves an already-running `erp-odoo` untouched, and `--stack odoo-community` leaves `erp-react`/`erp-company-backend`/`erp-nginx` untouched. PostgreSQL is shared by both stacks and always starts regardless of selection, since Odoo and the website use it as a common database server with separate databases. Odoo continues to use direct port `8069` access in this phase; Nginx does not proxy Odoo. All existing volume names, container names, ports, and SSL behavior are unchanged.
+
+For the selected stack, the script:
+
+- The deployment script validates only the variables required by the selected stack before starting any service.
+- When `website` is selected: clones or updates the external React repo into `docker/react/app`, provisions the website database/role, builds `company-backend`/`react`/`nginx`, and runs Prisma migrations.
+- When `odoo-community` is selected: builds `odoo` and fixes the Odoo log bind-mount permissions using the Odoo container UID/GID.
+- Validates the Compose config for the selected profile(s).
+- Creates required log/SSL directories for the selected stack.
+- Starts/updates only the selected stack's services using both Compose files, without removing volumes.
 
 ## 4. Access
 
@@ -93,10 +106,10 @@ docker compose \
 After DNS `A` records for `infoaxon.lk` and `www.infoaxon.lk` point at the server:
 
 ```bash
-bash scripts/install/deploy.sh --ssl
+bash scripts/install/deploy.sh --stack website,odoo-community --ssl
 ```
 
-This uses HTTP-01 validation, copies certificates into `ssl/live/infoaxon.lk/`, switches `NGINX_TEMPLATE_PROFILE=https`, and reloads Nginx.
+`--ssl` requires the `website` stack to be selected (directly or via the default); it is rejected up front with a clear error if used with `--stack odoo-community` alone. This uses HTTP-01 validation, copies certificates into `ssl/live/infoaxon.lk/`, switches `NGINX_TEMPLATE_PROFILE=https`, and reloads Nginx.
 
 No wildcard certificate is requested. No `*.infoaxon.lk` routing is configured.
 

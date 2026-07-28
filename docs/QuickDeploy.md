@@ -25,6 +25,17 @@ The external website repository must provide `package.json` and `package-lock.js
 
 The SEO generation scripts query PostgreSQL through Prisma during the React Docker build, so that build requires a valid production `DATABASE_URL` and network access to the private PostgreSQL service. The deployment starts PostgreSQL, creates or updates the website role/database idempotently, builds the backend image, and runs `prisma migrate deploy` before building React. PostgreSQL stays on the private backend Docker network and is not published on a host port.
 
+## Stack Selection
+
+`bash scripts/install/deploy.sh` with no `--stack` flag defaults to `--stack website,odoo-community` — the full stack, deployed exactly as before. To deploy a subset:
+
+```bash
+bash scripts/install/deploy.sh --stack website
+bash scripts/install/deploy.sh --stack odoo-community
+```
+
+Subset deployments never stop or remove containers belonging to a stack that wasn't selected. PostgreSQL is shared by both stacks and always starts. Odoo still uses direct port `8069` access in this phase. All existing volumes are unchanged. `--ssl` requires the `website` stack.
+
 ## Normal Update
 
 ```bash

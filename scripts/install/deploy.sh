@@ -403,6 +403,37 @@ if [[ "${ENABLE_SSL}" == "true" ]]; then
     bash "${SCRIPT_DIR}/setup-ssl.sh" "${DOMAIN}"
 fi
 
+# -----------------------------------------------------------------------------
+# Verify only the selected services (non-destructive: inspection only)
+# -----------------------------------------------------------------------------
+info "Verifying selected services (${STACK_LABEL})..."
+VERIFY_FAILED=false
+for svc in "${SELECTED_SERVICES[@]}"; do
+    container_id="$("${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" ps -q "${svc}")"
+    if [[ -z "${container_id}" ]]; then
+        echo -e "  ${RED}[FAIL]${NC} ${svc}: container not found"
+        VERIFY_FAILED=true
+        continue
+    fi
+
+    state="$(docker inspect --format='{{.State.Status}}' "${container_id}" 2>/dev/null || echo "unknown")"
+    health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container_id}" 2>/dev/null || echo "unknown")"
+
+    if [[ "${health}" == "healthy" ]]; then
+        echo -e "  ${GREEN}[PASS]${NC} ${svc}: healthy"
+    elif [[ "${health}" == "none" && "${state}" == "running" ]]; then
+        echo -e "  ${GREEN}[PASS]${NC} ${svc}: running (no healthcheck defined)"
+    else
+        echo -e "  ${RED}[FAIL]${NC} ${svc}: state=${state} health=${health}"
+        VERIFY_FAILED=true
+    fi
+done
+
+if [[ "${VERIFY_FAILED}" == "true" ]]; then
+    error "One or more selected services failed verification."
+fi
+success "All selected services verified."
+
 echo ""
 echo -e "${GREEN}============================================================${NC}"
 echo -e "${GREEN}  Deployment complete (stack: ${STACK_LABEL})${NC}"

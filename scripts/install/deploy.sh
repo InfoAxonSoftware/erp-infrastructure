@@ -403,6 +403,74 @@ if [[ "${ENABLE_SSL}" == "true" ]]; then
     bash "${SCRIPT_DIR}/setup-ssl.sh" "${DOMAIN}"
 fi
 
+# -----------------------------------------------------------------------------
+# Verify only the selected services (non-destructive: inspection only)
+# A healthcheck may legitimately report "starting" during its start_period
+# and initial retries, so poll with a bounded timeout instead of failing on
+# the first observation.
+# -----------------------------------------------------------------------------
+info "Verifying selected services (${STACK_LABEL})..."
+VERIFY_TIMEOUT=120
+VERIFY_INTERVAL=2
+declare -A SERVICE_RESULT=()
+declare -A SERVICE_LAST_STATE=()
+declare -A SERVICE_LAST_HEALTH=()
+
+PENDING_SERVICES=("${SELECTED_SERVICES[@]}")
+elapsed=0
+
+while [[ ${#PENDING_SERVICES[@]} -gt 0 && ${elapsed} -lt ${VERIFY_TIMEOUT} ]]; do
+    STILL_PENDING=()
+    for svc in "${PENDING_SERVICES[@]}"; do
+        container_id="$("${COMPOSE_CMD[@]}" "${PROFILE_ARGS[@]}" ps -q "${svc}")"
+        if [[ -z "${container_id}" ]]; then
+            state="missing"
+            health="none"
+        else
+            state="$(docker inspect --format='{{.State.Status}}' "${container_id}" 2>/dev/null || echo "unknown")"
+            health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container_id}" 2>/dev/null || echo "unknown")"
+        fi
+        SERVICE_LAST_STATE[${svc}]="${state}"
+        SERVICE_LAST_HEALTH[${svc}]="${health}"
+
+        if [[ "${health}" == "healthy" ]]; then
+            echo -e "  ${GREEN}[PASS]${NC} ${svc}: healthy"
+            SERVICE_RESULT[${svc}]="PASS"
+        elif [[ "${health}" == "none" && "${state}" == "running" ]]; then
+            echo -e "  ${GREEN}[PASS]${NC} ${svc}: running (no healthcheck defined)"
+            SERVICE_RESULT[${svc}]="PASS"
+        elif [[ "${health}" == "starting" ]]; then
+            echo -e "  ${YELLOW}[WAIT]${NC} ${svc}: ${state}, health=starting"
+            STILL_PENDING+=("${svc}")
+        else
+            echo -e "  ${RED}[FAIL]${NC} ${svc}: state=${state} health=${health}"
+            SERVICE_RESULT[${svc}]="FAIL"
+        fi
+    done
+    PENDING_SERVICES=("${STILL_PENDING[@]}")
+
+    if [[ ${#PENDING_SERVICES[@]} -gt 0 ]]; then
+        sleep "${VERIFY_INTERVAL}"
+        elapsed=$((elapsed + VERIFY_INTERVAL))
+    fi
+done
+
+VERIFY_FAILED=false
+for svc in "${SELECTED_SERVICES[@]}"; do
+    if [[ "${SERVICE_RESULT[${svc}]:-}" == "PASS" ]]; then
+        continue
+    fi
+    if [[ "${SERVICE_RESULT[${svc}]:-}" != "FAIL" ]]; then
+        echo -e "  ${RED}[FAIL]${NC} ${svc}: timed out after ${VERIFY_TIMEOUT}s (state=${SERVICE_LAST_STATE[${svc}]:-unknown} health=${SERVICE_LAST_HEALTH[${svc}]:-unknown})"
+    fi
+    VERIFY_FAILED=true
+done
+
+if [[ "${VERIFY_FAILED}" == "true" ]]; then
+    error "One or more selected services failed verification."
+fi
+success "All selected services verified."
+
 echo ""
 echo -e "${GREEN}============================================================${NC}"
 echo -e "${GREEN}  Deployment complete (stack: ${STACK_LABEL})${NC}"
